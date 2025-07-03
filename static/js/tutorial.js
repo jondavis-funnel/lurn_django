@@ -1,0 +1,889 @@
+// Tutorial App JavaScript
+class TutorialApp {
+    constructor() {
+        this.currentModule = null;
+        this.currentLesson = null;
+        this.modules = [];
+        this.progress = {};
+        this.timeTracker = null;
+        this.startTime = null;
+        
+        this.init();
+    }
+    
+    async init() {
+        // Load progress from localStorage
+        this.loadProgress();
+        
+        // Load modules
+        await this.loadModules();
+        
+        // Set up event listeners
+        this.setupEventListeners();
+        
+        // Check authentication
+        this.checkAuth();
+        
+        // Apply saved theme
+        this.applyTheme();
+    }
+    
+    loadProgress() {
+        const savedProgress = localStorage.getItem('djangoTutorialProgress');
+        if (savedProgress) {
+            this.progress = JSON.parse(savedProgress);
+        }
+    }
+    
+    saveProgress() {
+        localStorage.setItem('djangoTutorialProgress', JSON.stringify(this.progress));
+    }
+    
+    async loadModules() {
+        try {
+            const response = await fetch('/api/modules/');
+            this.modules = await response.json();
+            this.renderModulesList();
+            this.renderModulesGrid();
+            this.updateOverallProgress();
+        } catch (error) {
+            console.error('Error loading modules:', error);
+        }
+    }
+    
+    renderModulesList() {
+        const container = document.getElementById('modules-list');
+        container.innerHTML = '';
+        
+        this.modules.forEach(module => {
+            const moduleEl = document.createElement('div');
+            moduleEl.className = 'module-item';
+            
+            const headerEl = document.createElement('div');
+            headerEl.className = 'module-header';
+            headerEl.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>${module.title}</span>
+                    <small class="module-progress">${module.progress_percentage}%</small>
+                </div>
+            `;
+            headerEl.onclick = () => this.toggleModule(module.id);
+            
+            const lessonsEl = document.createElement('div');
+            lessonsEl.className = 'lessons-list';
+            lessonsEl.id = `module-${module.id}-lessons`;
+            lessonsEl.style.display = 'none';
+            
+            module.lessons.forEach(lesson => {
+                const lessonEl = document.createElement('div');
+                lessonEl.className = 'lesson-item';
+                if (lesson.is_completed) {
+                    lessonEl.classList.add('completed');
+                }
+                lessonEl.textContent = lesson.title;
+                lessonEl.onclick = () => this.loadLesson(module, lesson);
+                lessonsEl.appendChild(lessonEl);
+            });
+            
+            moduleEl.appendChild(headerEl);
+            moduleEl.appendChild(lessonsEl);
+            container.appendChild(moduleEl);
+        });
+    }
+    
+    renderModulesGrid() {
+        const grid = document.getElementById('modules-grid');
+        if (!grid) return;
+        
+        grid.innerHTML = this.modules.map(module => {
+            const completedLessons = module.lessons.filter(lesson => 
+                this.isLessonCompleted(lesson.id)
+            ).length;
+            const totalLessons = module.lessons.length;
+            const progressPercent = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+            
+            return `
+                <div class="col-md-6">
+                    <div class="card h-100 module-card" onclick="app.showModuleOverview(app.modules.find(m => m.id === ${module.id}))">
+                        <div class="card-body">
+                            <h5 class="card-title">${module.title}</h5>
+                            <p class="card-text">${module.description}</p>
+                            <div class="mb-3">
+                                <span class="badge bg-primary">${module.estimated_minutes} min</span>
+                                <span class="badge bg-secondary">${totalLessons} lessons</span>
+                            </div>
+                            <div class="progress mb-3">
+                                <div class="progress-bar" role="progressbar" style="width: ${progressPercent}%" 
+                                     aria-valuenow="${progressPercent}" aria-valuemin="0" aria-valuemax="100">
+                                    ${progressPercent}%
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" 
+                                    onclick="event.stopPropagation(); app.showModuleOverview(app.modules.find(m => m.id === ${module.id}))">
+                                View Module
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    toggleModule(moduleId) {
+        const lessonsEl = document.getElementById(`module-${moduleId}-lessons`);
+        const isVisible = lessonsEl.style.display !== 'none';
+        
+        // Close all modules
+        document.querySelectorAll('.lessons-list').forEach(el => {
+            el.style.display = 'none';
+        });
+        document.querySelectorAll('.module-header').forEach(el => {
+            el.classList.remove('active');
+        });
+        
+        // Open selected module
+        if (!isVisible) {
+            lessonsEl.style.display = 'block';
+            lessonsEl.previousElementSibling.classList.add('active');
+        }
+        
+        // Show module overview page
+        const module = this.modules.find(m => m.id === moduleId);
+        if (module) {
+            this.showModuleOverview(module);
+        }
+    }
+    
+    async loadLesson(module, lesson) {
+        // Stop time tracking for previous lesson
+        this.stopTimeTracking();
+        
+        this.currentModule = module;
+        this.currentLesson = lesson;
+        
+        // Update UI
+        document.getElementById('welcome-screen').style.display = 'none';
+        document.getElementById('progress-dashboard').style.display = 'none';
+        document.getElementById('settings-panel').style.display = 'none';
+        document.getElementById('lesson-content').style.display = 'block';
+        
+        // Update breadcrumb
+        document.getElementById('module-breadcrumb').textContent = module.title;
+        document.getElementById('module-breadcrumb').style.cursor = 'pointer';
+        document.getElementById('lesson-breadcrumb').textContent = lesson.title;
+        document.getElementById('lesson-title').textContent = lesson.title;
+        
+        // Render lesson content
+        document.getElementById('lesson-body').innerHTML = marked.parse(lesson.content);
+        
+        // Syntax highlighting
+        Prism.highlightAll();
+        
+        // Show code comparison if available
+        if (lesson.django_code || lesson.dotnet_code) {
+            document.getElementById('code-comparison').style.display = 'block';
+            document.getElementById('django-code').textContent = lesson.django_code || '';
+            document.getElementById('dotnet-code').textContent = lesson.dotnet_code || '';
+            Prism.highlightAll();
+        } else {
+            document.getElementById('code-comparison').style.display = 'none';
+        }
+        
+        // Show exercise if available
+        if (lesson.has_exercise) {
+            document.getElementById('exercise-section').style.display = 'block';
+            document.getElementById('exercise-code').value = lesson.exercise_starter_code || '';
+        } else {
+            document.getElementById('exercise-section').style.display = 'none';
+        }
+        
+        // Show quiz if available
+        if (lesson.quizzes && lesson.quizzes.length > 0) {
+            document.getElementById('quiz-section').style.display = 'block';
+            this.renderQuizzes(lesson.quizzes);
+        } else {
+            document.getElementById('quiz-section').style.display = 'none';
+        }
+        
+        // Update navigation buttons
+        this.updateNavigationButtons();
+        
+        // Update active lesson in sidebar
+        document.querySelectorAll('.lesson-item').forEach(el => {
+            el.classList.remove('active');
+        });
+        event.target.classList.add('active');
+        
+        // Start time tracking
+        this.startTimeTracking();
+        
+        // Update lesson progress
+        this.updateLessonProgress();
+    }
+    
+    renderQuizzes(quizzes) {
+        const container = document.getElementById('quiz-container');
+        container.innerHTML = '';
+        
+        quizzes.forEach((quiz, index) => {
+            const quizEl = document.createElement('div');
+            quizEl.className = 'quiz-question';
+            quizEl.innerHTML = `
+                <h6>Question ${index + 1}</h6>
+                <p>${quiz.question}</p>
+                <div class="quiz-options" data-quiz-id="${quiz.id}">
+                    ${quiz.options.map((option, i) => `
+                        <div class="quiz-option" data-answer="${i}">
+                            ${option}
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="quiz-result" id="quiz-result-${quiz.id}"></div>
+            `;
+            container.appendChild(quizEl);
+        });
+        
+        // Add click handlers
+        document.querySelectorAll('.quiz-option').forEach(el => {
+            el.onclick = (e) => this.selectQuizAnswer(e);
+        });
+    }
+    
+    async selectQuizAnswer(event) {
+        const option = event.target;
+        const quizId = option.parentElement.dataset.quizId;
+        const answer = parseInt(option.dataset.answer);
+        
+        // Visual feedback
+        option.parentElement.querySelectorAll('.quiz-option').forEach(el => {
+            el.classList.remove('selected');
+        });
+        option.classList.add('selected');
+        
+        // Submit answer
+        try {
+            const response = await fetch('/api/submit-quiz/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    quiz: quizId,
+                    selected_answer: answer
+                })
+            });
+            
+            const result = await response.json();
+            
+            // Show result
+            const resultEl = document.getElementById(`quiz-result-${quizId}`);
+            if (result.is_correct) {
+                option.classList.add('correct');
+                resultEl.innerHTML = `<div class="alert alert-success">Correct! ${result.explanation}</div>`;
+            } else {
+                option.classList.add('incorrect');
+                option.parentElement.children[result.correct_answer].classList.add('correct');
+                resultEl.innerHTML = `<div class="alert alert-danger">Incorrect. ${result.explanation}</div>`;
+            }
+            
+            // Disable further selection
+            option.parentElement.querySelectorAll('.quiz-option').forEach(el => {
+                el.style.pointerEvents = 'none';
+            });
+        } catch (error) {
+            console.error('Error submitting quiz:', error);
+        }
+    }
+    
+    async runExercise() {
+        const code = document.getElementById('exercise-code').value;
+        const resultsEl = document.getElementById('test-results');
+        
+        resultsEl.innerHTML = '<div class="alert alert-info">Running tests...</div>';
+        
+        try {
+            const response = await fetch('/api/submit-exercise/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    lesson_id: this.currentLesson.id,
+                    code: code
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.all_passed) {
+                resultsEl.innerHTML = '<div class="alert alert-success">All tests passed! Great job!</div>';
+                // Mark exercise as completed in local progress
+                this.updateLocalProgress('exercise_completed', true);
+            } else {
+                let html = '<div class="alert alert-danger">Some tests failed:</div>';
+                result.results.forEach(test => {
+                    html += `<div class="test-result ${test.passed ? 'passed' : 'failed'}">
+                        ${test.test || 'Test'}: ${test.passed ? 'Passed' : 'Failed'}
+                        ${test.error ? `<br>Error: ${test.error}` : ''}
+                        ${!test.passed && test.expected ? `<br>Expected: ${test.expected}<br>Got: ${test.actual}` : ''}
+                    </div>`;
+                });
+                resultsEl.innerHTML = html;
+            }
+        } catch (error) {
+            resultsEl.innerHTML = '<div class="alert alert-danger">Error running tests: ' + error.message + '</div>';
+        }
+    }
+    
+    showSolution() {
+        if (this.currentLesson.exercise_solution) {
+            document.getElementById('exercise-code').value = this.currentLesson.exercise_solution;
+        }
+    }
+    
+    showHome() {
+        // Hide all content sections
+        document.getElementById('lesson-content').style.display = 'none';
+        document.getElementById('progress-dashboard').style.display = 'none';
+        document.getElementById('settings-panel').style.display = 'none';
+        
+        // Show welcome screen
+        document.getElementById('welcome-screen').style.display = 'block';
+        
+        // Clear current module/lesson
+        this.currentModule = null;
+        this.currentLesson = null;
+        
+        // Stop time tracking
+        this.stopTimeTracking();
+    }
+    
+    showModuleOverview(module) {
+        // Hide all content sections
+        document.getElementById('lesson-content').style.display = 'none';
+        document.getElementById('progress-dashboard').style.display = 'none';
+        document.getElementById('settings-panel').style.display = 'none';
+        document.getElementById('welcome-screen').style.display = 'none';
+        
+        // Create module overview content
+        const overviewHtml = `
+            <div class="module-overview">
+                <h1>${module.title}</h1>
+                <p class="lead">${module.description}</p>
+                <div class="mb-4">
+                    <span class="badge bg-primary">Estimated time: ${module.estimated_minutes} minutes</span>
+                    <span class="badge bg-success">${module.lessons.length} lessons</span>
+                </div>
+                ${module.dotnet_comparison ? `
+                    <div class="alert alert-info">
+                        <h5>.NET Comparison</h5>
+                        <pre>${module.dotnet_comparison}</pre>
+                    </div>
+                ` : ''}
+                <h3>Lessons in this module:</h3>
+                <div class="list-group">
+                    ${module.lessons.map((lesson, index) => `
+                        <a href="#" class="list-group-item list-group-item-action" 
+                           onclick="app.loadLesson(app.modules.find(m => m.id === ${module.id}), app.modules.find(m => m.id === ${module.id}).lessons[${index}]); return false;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h5 class="mb-1">${index + 1}. ${lesson.title}</h5>
+                                    ${lesson.has_exercise ? '<span class="badge bg-warning">Has Exercise</span>' : ''}
+                                </div>
+                                ${this.isLessonCompleted(lesson.id) ? '<span class="badge bg-success">Completed</span>' : ''}
+                            </div>
+                        </a>
+                    `).join('')}
+                </div>
+                <div class="mt-4">
+                    <button class="btn btn-primary" onclick="app.loadLesson(app.modules.find(m => m.id === ${module.id}), app.modules.find(m => m.id === ${module.id}).lessons[0]); return false;">
+                        Start Module
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        // Show in lesson content area
+        document.getElementById('lesson-content').style.display = 'block';
+        document.getElementById('lesson-body').innerHTML = overviewHtml;
+        
+        // Update breadcrumb
+        document.getElementById('module-breadcrumb').textContent = module.title;
+        document.getElementById('lesson-breadcrumb').textContent = 'Overview';
+        document.getElementById('lesson-title').textContent = 'Module Overview';
+        
+        // Hide elements not needed for overview
+        document.getElementById('code-comparison').style.display = 'none';
+        document.getElementById('exercise-section').style.display = 'none';
+        document.getElementById('quiz-section').style.display = 'none';
+        document.getElementById('lesson-navigation').style.display = 'none';
+        
+        // Clear current lesson but keep module
+        this.currentModule = module;
+        this.currentLesson = null;
+        
+        // Stop time tracking
+        this.stopTimeTracking();
+    }
+    
+    async completeLesson() {
+        if (!this.currentLesson) return;
+        
+        try {
+            const response = await fetch(`/api/lessons/${this.currentLesson.id}/complete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': this.getCookie('csrftoken')
+                }
+            });
+            
+            if (response.ok) {
+                // Update local progress
+                this.updateLocalProgress('completed', true);
+                
+                // Update UI
+                document.querySelector('.lesson-item.active').classList.add('completed');
+                document.getElementById('complete-lesson').style.display = 'none';
+                
+                // Reload modules to update progress
+                await this.loadModules();
+                
+                // Show success message
+                this.showNotification('Lesson completed!', 'success');
+            }
+        } catch (error) {
+            console.error('Error completing lesson:', error);
+        }
+    }
+    
+    updateLocalProgress(field, value) {
+        if (!this.progress[this.currentLesson.id]) {
+            this.progress[this.currentLesson.id] = {};
+        }
+        this.progress[this.currentLesson.id][field] = value;
+        this.saveProgress();
+    }
+    
+    updateLessonProgress() {
+        const progress = this.progress[this.currentLesson.id] || {};
+        const completed = progress.completed || this.currentLesson.is_completed;
+        
+        if (completed) {
+            document.getElementById('complete-lesson').style.display = 'none';
+        } else {
+            document.getElementById('complete-lesson').style.display = 'inline-block';
+        }
+        
+        // Update progress bar
+        let progressPercentage = 0;
+        if (completed) progressPercentage = 100;
+        else if (progress.exercise_completed) progressPercentage = 75;
+        else if (progress.quiz_attempted) progressPercentage = 50;
+        else if (progress.time_spent_seconds > 60) progressPercentage = 25;
+        
+        document.getElementById('lesson-progress').style.width = progressPercentage + '%';
+    }
+    
+    updateNavigationButtons() {
+        const currentModuleIndex = this.modules.findIndex(m => m.id === this.currentModule.id);
+        const currentLessonIndex = this.currentModule.lessons.findIndex(l => l.id === this.currentLesson.id);
+        
+        const prevButton = document.getElementById('prev-lesson');
+        const nextButton = document.getElementById('next-lesson');
+        
+        // Check if there's a previous lesson
+        if (currentLessonIndex > 0 || currentModuleIndex > 0) {
+            prevButton.disabled = false;
+        } else {
+            prevButton.disabled = true;
+        }
+        
+        // Check if there's a next lesson
+        if (currentLessonIndex < this.currentModule.lessons.length - 1 || 
+            currentModuleIndex < this.modules.length - 1) {
+            nextButton.disabled = false;
+        } else {
+            nextButton.disabled = true;
+        }
+    }
+    
+    navigateLesson(direction) {
+        const currentModuleIndex = this.modules.findIndex(m => m.id === this.currentModule.id);
+        const currentLessonIndex = this.currentModule.lessons.findIndex(l => l.id === this.currentLesson.id);
+        
+        if (direction === 'next') {
+            if (currentLessonIndex < this.currentModule.lessons.length - 1) {
+                // Next lesson in same module
+                this.loadLesson(this.currentModule, this.currentModule.lessons[currentLessonIndex + 1]);
+            } else if (currentModuleIndex < this.modules.length - 1) {
+                // First lesson of next module
+                const nextModule = this.modules[currentModuleIndex + 1];
+                this.toggleModule(nextModule.id);
+                this.loadLesson(nextModule, nextModule.lessons[0]);
+            }
+        } else if (direction === 'prev') {
+            if (currentLessonIndex > 0) {
+                // Previous lesson in same module
+                this.loadLesson(this.currentModule, this.currentModule.lessons[currentLessonIndex - 1]);
+            } else if (currentModuleIndex > 0) {
+                // Last lesson of previous module
+                const prevModule = this.modules[currentModuleIndex - 1];
+                this.toggleModule(prevModule.id);
+                this.loadLesson(prevModule, prevModule.lessons[prevModule.lessons.length - 1]);
+            }
+        }
+    }
+    
+    startTimeTracking() {
+        this.startTime = Date.now();
+        this.timeTracker = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+            if (elapsed > 0 && elapsed % 30 === 0) {
+                // Save time every 30 seconds
+                this.saveTimeSpent(elapsed);
+            }
+        }, 1000);
+    }
+    
+    stopTimeTracking() {
+        if (this.timeTracker) {
+            clearInterval(this.timeTracker);
+            if (this.startTime) {
+                const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+                this.saveTimeSpent(elapsed);
+            }
+            this.timeTracker = null;
+            this.startTime = null;
+        }
+    }
+    
+    async saveTimeSpent(seconds) {
+        if (!this.currentLesson) return;
+        
+        // Save to local storage
+        if (!this.progress[this.currentLesson.id]) {
+            this.progress[this.currentLesson.id] = {};
+        }
+        this.progress[this.currentLesson.id].time_spent_seconds = 
+            (this.progress[this.currentLesson.id].time_spent_seconds || 0) + seconds;
+        this.saveProgress();
+        
+        // Save to server if authenticated
+        try {
+            await fetch(`/api/lessons/${this.currentLesson.id}/track_time/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    time_spent_seconds: seconds
+                })
+            });
+        } catch (error) {
+            console.error('Error saving time:', error);
+        }
+    }
+    
+    showProgressDashboard() {
+        document.getElementById('welcome-screen').style.display = 'none';
+        document.getElementById('lesson-content').style.display = 'none';
+        document.getElementById('settings-panel').style.display = 'none';
+        document.getElementById('progress-dashboard').style.display = 'block';
+        
+        this.updateProgressDashboard();
+    }
+    
+    async updateProgressDashboard() {
+        try {
+            const response = await fetch('/api/progress/summary/');
+            const data = await response.json();
+            
+            document.getElementById('overall-percentage').textContent = data.progress_percentage + '%';
+            document.getElementById('lessons-completed').textContent = 
+                `${data.completed_lessons}/${data.total_lessons}`;
+            document.getElementById('time-spent').textContent = 
+                this.formatTime(data.total_time_seconds);
+            
+            // Module progress
+            const modulesContainer = document.getElementById('modules-progress');
+            modulesContainer.innerHTML = '';
+            
+            data.modules_progress.forEach(module => {
+                const moduleEl = document.createElement('div');
+                moduleEl.className = 'progress-module';
+                moduleEl.innerHTML = `
+                    <h5>${module.title}</h5>
+                    <div class="progress">
+                        <div class="progress-bar" style="width: ${module.progress_percentage}%">
+                            ${module.progress_percentage}%
+                        </div>
+                    </div>
+                `;
+                modulesContainer.appendChild(moduleEl);
+            });
+        } catch (error) {
+            // Use local progress
+            this.updateProgressFromLocal();
+        }
+    }
+    
+    updateProgressFromLocal() {
+        let totalLessons = 0;
+        let completedLessons = 0;
+        let totalTime = 0;
+        
+        this.modules.forEach(module => {
+            module.lessons.forEach(lesson => {
+                totalLessons++;
+                const progress = this.progress[lesson.id];
+                if (progress) {
+                    if (progress.completed) completedLessons++;
+                    totalTime += progress.time_spent_seconds || 0;
+                }
+            });
+        });
+        
+        const percentage = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+        
+        document.getElementById('overall-percentage').textContent = percentage + '%';
+        document.getElementById('lessons-completed').textContent = `${completedLessons}/${totalLessons}`;
+        document.getElementById('time-spent').textContent = this.formatTime(totalTime);
+    }
+    
+    updateOverallProgress() {
+        let totalLessons = 0;
+        let completedLessons = 0;
+        
+        this.modules.forEach(module => {
+            totalLessons += module.total_lessons;
+            completedLessons += module.completed_lessons;
+        });
+        
+        const percentage = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+        document.getElementById('overall-progress').textContent = percentage + '%';
+    }
+    
+    isLessonCompleted(lessonId) {
+        return this.progress[lessonId]?.completed || false;
+    }
+    
+    formatTime(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        
+        if (hours > 0) {
+            return `${hours}h ${minutes}m`;
+        } else {
+            return `${minutes}m`;
+        }
+    }
+    
+    showSettings() {
+        document.getElementById('welcome-screen').style.display = 'none';
+        document.getElementById('lesson-content').style.display = 'none';
+        document.getElementById('progress-dashboard').style.display = 'none';
+        document.getElementById('settings-panel').style.display = 'block';
+    }
+    
+    async exportProgress() {
+        try {
+            const response = await fetch('/api/export-progress/');
+            const data = await response.json();
+            
+            // Merge with local progress
+            data.local_progress = this.progress;
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `django-tutorial-progress-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Error exporting progress:', error);
+        }
+    }
+    
+    importProgress() {
+        document.getElementById('import-file').click();
+    }
+    
+    async handleImportFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            
+            // Import local progress
+            if (data.local_progress) {
+                this.progress = data.local_progress;
+                this.saveProgress();
+            }
+            
+            // Import server progress if authenticated
+            if (data.progress) {
+                await fetch('/api/import-progress/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCookie('csrftoken')
+                    },
+                    body: JSON.stringify(data)
+                });
+            }
+            
+            // Reload modules
+            await this.loadModules();
+            this.showNotification('Progress imported successfully!', 'success');
+        } catch (error) {
+            console.error('Error importing progress:', error);
+            this.showNotification('Error importing progress file', 'danger');
+        }
+    }
+    
+    resetProgress() {
+        if (confirm('Are you sure you want to reset all progress? This cannot be undone.')) {
+            this.progress = {};
+            this.saveProgress();
+            this.loadModules();
+            this.showNotification('Progress reset successfully', 'info');
+        }
+    }
+    
+    toggleDarkMode() {
+        const isDark = document.getElementById('dark-mode').checked;
+        if (isDark) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('darkMode', 'true');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('darkMode', 'false');
+        }
+    }
+    
+    applyTheme() {
+        const darkMode = localStorage.getItem('darkMode') === 'true';
+        if (darkMode) {
+            document.body.classList.add('dark-mode');
+            document.getElementById('dark-mode').checked = true;
+        }
+    }
+    
+    checkAuth() {
+        // Check if user is authenticated by looking for Django's sessionid cookie
+        const isAuthenticated = document.cookie.includes('sessionid');
+        const authSection = document.getElementById('auth-section');
+        
+        if (isAuthenticated) {
+            authSection.innerHTML = `
+                <a class="nav-link" href="/api-auth/logout/">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            `;
+        }
+    }
+    
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-5`;
+        notification.style.zIndex = '9999';
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.remove();
+        }, 5000);
+    }
+    
+    getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    
+    setupEventListeners() {
+        // Navigation
+        document.getElementById('start-tutorial').onclick = () => {
+            if (this.modules.length > 0 && this.modules[0].lessons.length > 0) {
+                this.toggleModule(this.modules[0].id);
+                this.loadLesson(this.modules[0], this.modules[0].lessons[0]);
+            }
+        };
+        
+        // Breadcrumb navigation
+        document.getElementById('home-breadcrumb').onclick = (e) => {
+            e.preventDefault();
+            this.showHome();
+        };
+        
+        document.getElementById('module-breadcrumb').onclick = (e) => {
+            e.preventDefault();
+            if (this.currentModule) {
+                this.showModuleOverview(this.currentModule);
+            }
+        };
+        
+        // Home link in navbar
+        const homeLink = document.querySelector('.navbar-brand');
+        if (homeLink) {
+            homeLink.onclick = (e) => {
+                e.preventDefault();
+                this.showHome();
+            };
+        }
+        
+        document.getElementById('prev-lesson').onclick = () => this.navigateLesson('prev');
+        document.getElementById('next-lesson').onclick = () => this.navigateLesson('next');
+        document.getElementById('complete-lesson').onclick = () => this.completeLesson();
+        
+        // Exercise
+        document.getElementById('run-exercise').onclick = () => this.runExercise();
+        document.getElementById('show-solution').onclick = () => this.showSolution();
+        
+        // Progress
+        document.getElementById('progress-link').onclick = (e) => {
+            e.preventDefault();
+            this.showProgressDashboard();
+        };
+        
+        // Settings
+        document.getElementById('settings-link').onclick = (e) => {
+            e.preventDefault();
+            this.showSettings();
+        };
+        
+        document.getElementById('export-progress').onclick = () => this.exportProgress();
+        document.getElementById('import-progress').onclick = () => this.importProgress();
+        document.getElementById('reset-progress').onclick = () => this.resetProgress();
+        document.getElementById('import-file').onchange = (e) => this.handleImportFile(e);
+        document.getElementById('dark-mode').onchange = () => this.toggleDarkMode();
+        
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            this.stopTimeTracking();
+        });
+    }
+}
+
+// Initialize app when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    window.tutorialApp = new TutorialApp();
+});
