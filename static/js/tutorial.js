@@ -26,6 +26,9 @@ class TutorialApp {
         
         // Apply saved theme
         this.applyTheme();
+        
+        // Handle initial URL routing
+        this.handleInitialRoute();
     }
     
     loadProgress() {
@@ -61,10 +64,11 @@ class TutorialApp {
             
             const headerEl = document.createElement('div');
             headerEl.className = 'module-header';
+            const moduleProgress = this.calculateModuleProgress(module);
             headerEl.innerHTML = `
                 <div class="d-flex justify-content-between align-items-center">
                     <span>${module.title}</span>
-                    <small class="module-progress">${module.progress_percentage}%</small>
+                    <small class="module-progress">${moduleProgress}%</small>
                 </div>
             `;
             headerEl.onclick = () => this.toggleModule(module.id);
@@ -77,6 +81,7 @@ class TutorialApp {
             module.lessons.forEach(lesson => {
                 const lessonEl = document.createElement('div');
                 lessonEl.className = 'lesson-item';
+                lessonEl.setAttribute('data-lesson-id', lesson.id);
                 if (lesson.is_completed) {
                     lessonEl.classList.add('completed');
                 }
@@ -161,6 +166,9 @@ class TutorialApp {
         this.currentModule = module;
         this.currentLesson = lesson;
         
+        // Update URL
+        this.updateURL('lesson', { moduleSlug: module.slug, lessonSlug: lesson.slug });
+        
         // Update UI
         document.getElementById('welcome-screen').style.display = 'none';
         document.getElementById('progress-dashboard').style.display = 'none';
@@ -195,7 +203,13 @@ class TutorialApp {
         // Show exercise if available
         if (lesson.has_exercise) {
             document.getElementById('exercise-section').style.display = 'block';
-            document.getElementById('exercise-code').value = lesson.exercise_starter_code || '';
+            
+            // Restore saved exercise code or use starter code
+            const savedCode = this.getSavedExerciseCode(lesson.id);
+            document.getElementById('exercise-code').value = savedCode || lesson.exercise_starter_code || '';
+            
+            // Add auto-save for exercise code
+            this.setupExerciseAutoSave(lesson.id);
         } else {
             document.getElementById('exercise-section').style.display = 'none';
         }
@@ -216,7 +230,12 @@ class TutorialApp {
         document.querySelectorAll('.lesson-item').forEach(el => {
             el.classList.remove('active');
         });
-        event.target.classList.add('active');
+        
+        // Find and highlight the current lesson in sidebar
+        const currentLessonElement = document.querySelector(`[data-lesson-id="${lesson.id}"]`);
+        if (currentLessonElement) {
+            currentLessonElement.classList.add('active');
+        }
         
         // Start time tracking
         this.startTimeTracking();
@@ -258,6 +277,39 @@ class TutorialApp {
                     console.error('Missing quiz data attributes:', el.dataset);
                 }
             };
+        });
+        
+        // Restore previously selected answers from localStorage
+        this.restoreQuizAnswers(quizzes);
+    }
+    
+    restoreQuizAnswers(quizzes) {
+        const quizResults = JSON.parse(localStorage.getItem('quizResults') || '{}');
+        
+        quizzes.forEach(quiz => {
+            const savedResult = quizResults[quiz.id];
+            if (savedResult && savedResult.selected_answer !== undefined) {
+                // Restore the visual selection without triggering API call
+                const option = document.querySelector(`[data-quiz="${quiz.id}"][data-answer="${savedResult.selected_answer}"]`);
+                if (option) {
+                    // Clear previous selections
+                    option.parentElement.querySelectorAll('.quiz-option').forEach(el => {
+                        el.classList.remove('selected', 'correct', 'incorrect');
+                    });
+                    
+                    // Mark as selected and show result
+                    option.classList.add('selected');
+                    option.classList.add(savedResult.is_correct ? 'correct' : 'incorrect');
+                    
+                    // Show the result message
+                    const resultEl = document.getElementById(`quiz-result-${quiz.id}`);
+                    if (resultEl) {
+                        resultEl.innerHTML = savedResult.is_correct ? 
+                            '<div class="alert alert-success">Correct!</div>' : 
+                            '<div class="alert alert-danger">Incorrect. Try again!</div>';
+                    }
+                }
+            }
         });
     }
     
@@ -362,6 +414,39 @@ class TutorialApp {
         }
     }
     
+    getSavedExerciseCode(lessonId) {
+        const exerciseCodes = JSON.parse(localStorage.getItem('exerciseCodes') || '{}');
+        return exerciseCodes[lessonId];
+    }
+    
+    saveExerciseCode(lessonId, code) {
+        const exerciseCodes = JSON.parse(localStorage.getItem('exerciseCodes') || '{}');
+        exerciseCodes[lessonId] = code;
+        localStorage.setItem('exerciseCodes', JSON.stringify(exerciseCodes));
+    }
+    
+    setupExerciseAutoSave(lessonId) {
+        const codeTextarea = document.getElementById('exercise-code');
+        if (codeTextarea) {
+            // Remove any existing listeners to avoid duplicates
+            codeTextarea.removeEventListener('input', codeTextarea._autoSaveHandler);
+            
+            // Create new auto-save handler
+            codeTextarea._autoSaveHandler = () => {
+                this.saveExerciseCode(lessonId, codeTextarea.value);
+            };
+            
+            // Add auto-save on input (with debouncing)
+            let saveTimeout;
+            codeTextarea.addEventListener('input', () => {
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(() => {
+                    this.saveExerciseCode(lessonId, codeTextarea.value);
+                }, 1000); // Save after 1 second of no typing
+            });
+        }
+    }
+    
     showSolution() {
         console.log('showSolution called');
         console.log('Current lesson:', this.currentLesson);
@@ -433,6 +518,11 @@ class TutorialApp {
         document.getElementById('settings-panel').style.display = 'none';
         document.getElementById('welcome-screen').style.display = 'none';
         
+        // Determine if module has been started
+        const moduleProgress = this.calculateModuleProgress(module);
+        const hasStarted = moduleProgress > 0;
+        const nextLesson = this.getNextIncompleteLesson(module);
+        
         // Create module overview content
         const overviewHtml = `
             <div class="module-overview">
@@ -441,6 +531,7 @@ class TutorialApp {
                 <div class="mb-4">
                     <span class="badge bg-primary">Estimated time: ${module.estimated_minutes} minutes</span>
                     <span class="badge bg-success">${module.lessons.length} lessons</span>
+                    ${hasStarted ? `<span class="badge bg-info">${moduleProgress}% Complete</span>` : ''}
                 </div>
                 ${module.dotnet_comparison ? `
                     <div class="alert alert-info">
@@ -464,8 +555,8 @@ class TutorialApp {
                     `).join('')}
                 </div>
                 <div class="mt-4">
-                    <button class="btn btn-primary" onclick="window.tutorialApp.startModule(${module.id}); return false;">
-                        <i class="fas fa-play"></i> Start Module
+                    <button class="btn btn-primary" onclick="window.tutorialApp.${hasStarted ? 'continueModule' : 'startModule'}(${module.id}); return false;">
+                        <i class="fas fa-${hasStarted ? 'play-circle' : 'play'}"></i> ${hasStarted ? 'Continue Module' : 'Start Module'}
                     </button>
                 </div>
                 
@@ -474,8 +565,8 @@ class TutorialApp {
                     <button class="btn btn-outline-secondary" onclick="window.tutorialApp.showHome(); return false;">
                         <i class="fas fa-arrow-left"></i> Back to Home
                     </button>
-                    <button class="btn btn-primary" onclick="window.tutorialApp.startModule(${module.id}); return false;">
-                        Start First Lesson <i class="fas fa-arrow-right"></i>
+                    <button class="btn btn-primary" onclick="window.tutorialApp.${hasStarted ? 'continueModule' : 'startModule'}(${module.id}); return false;">
+                        ${hasStarted ? `Continue from Lesson ${nextLesson ? nextLesson.order : '1'}` : 'Start First Lesson'} <i class="fas fa-arrow-right"></i>
                     </button>
                 </div>
             </div>
@@ -503,6 +594,9 @@ class TutorialApp {
         this.currentModule = module;
         this.currentLesson = null;
         
+        // Update URL
+        this.updateURL('module', { moduleSlug: module.slug });
+        
         // Stop time tracking
         this.stopTimeTracking();
     }
@@ -526,6 +620,9 @@ class TutorialApp {
                 document.querySelector('.lesson-item.active').classList.add('completed');
                 document.getElementById('complete-lesson').style.display = 'none';
                 
+                // Update module progress bar
+                this.updateModuleProgress();
+                
                 // Reload modules to update progress
                 await this.loadModules();
                 
@@ -547,22 +644,86 @@ class TutorialApp {
     
     updateLessonProgress() {
         const progress = this.progress[this.currentLesson.id] || {};
-        const completed = progress.completed || this.currentLesson.is_completed;
         
-        if (completed) {
+        // Check if lesson is completed in current session or previously completed
+        const sessionCompleted = progress.completed;
+        const previouslyCompleted = this.currentLesson.is_completed;
+        
+        // Show complete button based on current session status
+        if (sessionCompleted || previouslyCompleted) {
             document.getElementById('complete-lesson').style.display = 'none';
         } else {
             document.getElementById('complete-lesson').style.display = 'inline-block';
         }
         
-        // Update progress bar
-        let progressPercentage = 0;
-        if (completed) progressPercentage = 100;
-        else if (progress.exercise_completed) progressPercentage = 75;
-        else if (progress.quiz_attempted) progressPercentage = 50;
-        else if (progress.time_spent_seconds > 60) progressPercentage = 25;
+        // Update progress bar to show module completion progress
+        this.updateModuleProgress();
+    }
+    
+    updateModuleProgress() {
+        if (!this.currentModule) return;
         
+        const totalLessons = this.currentModule.lessons.length;
+        let completedLessons = 0;
+        
+        this.currentModule.lessons.forEach(lesson => {
+            const progress = this.progress[lesson.id] || {};
+            if (progress.completed || lesson.is_completed) {
+                completedLessons++;
+            }
+        });
+        
+        const progressPercentage = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
         document.getElementById('lesson-progress').style.width = progressPercentage + '%';
+        
+        // Also update sidebar progress
+        this.updateSidebarProgress();
+    }
+    
+    calculateModuleProgress(module) {
+        let totalLessons = module.lessons.length;
+        let completedLessons = 0;
+        
+        module.lessons.forEach(lesson => {
+            const progress = this.progress[lesson.id] || {};
+            if (progress.completed || lesson.is_completed) {
+                completedLessons++;
+            }
+        });
+        
+        return totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+    }
+    
+    getNextIncompleteLesson(module) {
+        return module.lessons.find(lesson => {
+            const progress = this.progress[lesson.id] || {};
+            return !progress.completed && !lesson.is_completed;
+        });
+    }
+    
+    continueModule(moduleId) {
+        const module = this.modules.find(m => m.id === moduleId);
+        if (!module) return;
+        
+        const nextLesson = this.getNextIncompleteLesson(module);
+        if (nextLesson) {
+            this.loadLessonById(nextLesson.id);
+        } else {
+            // All lessons completed, start from first lesson
+            this.startModule(moduleId);
+        }
+    }
+    
+    updateSidebarProgress() {
+        // Update progress for all modules in the sidebar
+        this.modules.forEach(module => {
+            const progressElement = document.querySelector(`#module-${module.id}-lessons`)
+                ?.parentElement.querySelector('.module-progress');
+            if (progressElement) {
+                const progress = this.calculateModuleProgress(module);
+                progressElement.textContent = `${progress}%`;
+            }
+        });
     }
     
     updateNavigationButtons() {
@@ -714,6 +875,9 @@ class TutorialApp {
         document.getElementById('settings-panel').style.display = 'none';
         document.getElementById('progress-dashboard').style.display = 'block';
         
+        // Update URL
+        this.updateURL('progress');
+        
         this.updateProgressDashboard();
     }
     
@@ -808,8 +972,8 @@ class TutorialApp {
         document.getElementById('progress-dashboard').style.display = 'none';
         document.getElementById('settings-panel').style.display = 'block';
         
-        // Update browser history
-        history.pushState({page: 'settings'}, 'Settings', '#settings');
+        // Update URL
+        this.updateURL('settings');
     }
     
     showHome() {
@@ -819,8 +983,8 @@ class TutorialApp {
         document.getElementById('settings-panel').style.display = 'none';
         document.getElementById('lesson-navigation').style.display = 'none';
         
-        // Update browser history
-        history.pushState({page: 'home'}, 'Django for .NET Developers', '#home');
+        // Update URL
+        this.updateURL('home');
         
         // Reset current lesson and module
         this.currentLesson = null;
@@ -963,6 +1127,93 @@ class TutorialApp {
         return cookieValue;
     }
     
+    // URL Routing Methods
+    updateURL(type, params = {}) {
+        let hash = '';
+        let title = 'Django for .NET Developers';
+        
+        switch (type) {
+            case 'lesson':
+                hash = `#/module/${params.moduleSlug}/lesson/${params.lessonSlug}`;
+                title = `${this.currentLesson.title} - ${this.currentModule.title}`;
+                break;
+            case 'module':
+                hash = `#/module/${params.moduleSlug}`;
+                title = `${this.currentModule.title} - Django for .NET Developers`;
+                break;
+            case 'settings':
+                hash = '#/settings';
+                title = 'Settings - Django for .NET Developers';
+                break;
+            case 'progress':
+                hash = '#/progress';
+                title = 'Progress - Django for .NET Developers';
+                break;
+            case 'home':
+            default:
+                hash = '';
+                title = 'Django for .NET Developers';
+                break;
+        }
+        
+        window.location.hash = hash;
+        document.title = title;
+    }
+    
+    handleInitialRoute() {
+        const hash = window.location.hash.substring(1); // Remove the # character
+        const pathParts = hash.split('/').filter(part => part);
+        
+        if (pathParts.length === 0) {
+            // Home page
+            this.showHome();
+        } else if (pathParts[0] === 'settings') {
+            this.showSettings();
+        } else if (pathParts[0] === 'progress') {
+            this.showProgressDashboard();
+        } else if (pathParts[0] === 'module') {
+            if (pathParts.length === 2) {
+                // Module overview: #/module/slug
+                this.loadModuleBySlug(pathParts[1]);
+            } else if (pathParts.length === 4 && pathParts[2] === 'lesson') {
+                // Lesson: #/module/module-slug/lesson/lesson-slug
+                this.loadLessonBySlug(pathParts[1], pathParts[3]);
+            }
+        }
+    }
+    
+    handleRouteChange() {
+        // Handle browser back/forward navigation
+        this.handleInitialRoute();
+    }
+    
+    loadModuleBySlug(moduleSlug) {
+        const module = this.modules.find(m => m.slug === moduleSlug);
+        if (module) {
+            this.showModuleOverview(module);
+        } else {
+            console.error('Module not found:', moduleSlug);
+            this.showHome();
+        }
+    }
+    
+    loadLessonBySlug(moduleSlug, lessonSlug) {
+        const module = this.modules.find(m => m.slug === moduleSlug);
+        if (module) {
+            const lesson = module.lessons.find(l => l.slug === lessonSlug);
+            if (lesson) {
+                this.toggleModule(module.id); // Expand the module in sidebar
+                this.loadLesson(module, lesson);
+            } else {
+                console.error('Lesson not found:', lessonSlug);
+                this.showModuleOverview(module);
+            }
+        } else {
+            console.error('Module not found:', moduleSlug);
+            this.showHome();
+        }
+    }
+    
     setupEventListeners() {
         // Navigation
         document.getElementById('start-tutorial').onclick = () => {
@@ -1027,25 +1278,29 @@ class TutorialApp {
         document.getElementById('dark-mode').onchange = () => this.toggleDarkMode();
         
         // Handle browser back/forward navigation
-        window.addEventListener('popstate', (event) => {
-            if (event.state) {
-                switch (event.state.page) {
-                    case 'settings':
-                        this.showSettings();
-                        break;
-                    case 'home':
-                    default:
-                        this.showHome();
-                        break;
-                }
-            } else {
-                this.showHome();
+        window.addEventListener('hashchange', (event) => {
+            this.handleRouteChange();
+        });
+        
+        // Handle page visibility changes (better than beforeunload)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.stopTimeTracking();
+            } else if (this.currentLesson) {
+                // Restart time tracking when page becomes visible again
+                this.startTimeTracking();
             }
         });
         
-        // Handle page unload
-        window.addEventListener('beforeunload', () => {
+        // Also handle when the window loses focus
+        window.addEventListener('blur', () => {
             this.stopTimeTracking();
+        });
+        
+        window.addEventListener('focus', () => {
+            if (this.currentLesson) {
+                this.startTimeTracking();
+            }
         });
     }
 }

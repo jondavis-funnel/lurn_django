@@ -548,3 +548,64 @@ body.dark-mode .alert-info pre {
     color: #0c5460;
     margin-bottom: 0.5rem;
 }
+
+/* Table Styling for Lesson Content */
+.lesson-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    background-color: white;
+    border-radius: 0.375rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.lesson-body table th,
+.lesson-body table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.lesson-body table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.lesson-body table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.lesson-body table tbody tr:nth-child(even) {
+    background-color: #fdfdfe;
+}
+
+.lesson-body table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Dark mode table styling */
+body.dark-mode .lesson-body table {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+}
+
+body.dark-mode .lesson-body table th {
+    background-color: #3a3a3a;
+    color: #e0e0e0;
+    border-bottom-color: #555;
+}
+
+body.dark-mode .lesson-body table td {
+    border-bottom-color: #555;
+}
+
+body.dark-mode .lesson-body table tbody tr:hover {
+    background-color: #3a3a3a;
+}
+
+body.dark-mode .lesson-body table tbody tr:nth-child(even) {
+    background-color: #333;
+}

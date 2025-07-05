@@ -29,8 +29,8 @@ class LessonSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'slug', 'content', 'order',
             'django_code', 'dotnet_code', 'has_exercise',
-            'exercise_starter_code', 'snippets', 'quizzes',
-            'is_completed', 'progress'
+            'exercise_starter_code', 'exercise_solution', 'exercise_tests',
+            'snippets', 'quizzes', 'is_completed', 'progress'
         ]
         
     def get_is_completed(self, obj):

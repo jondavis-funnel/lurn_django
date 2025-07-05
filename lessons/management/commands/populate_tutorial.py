@@ -1,6 +1,20 @@
 from django.core.management.base import BaseCommand
 from lessons.models import Module, Lesson, Quiz
 import json
+import sys
+import os
+
+# Add the content directory to the path
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../content'))
+
+try:
+    from module1_content import get_module1_lessons, get_module1_exercises
+    from module2_content import get_module2_lessons, get_module2_exercises
+    from module3_content import get_module3_lessons, get_module3_exercises
+    from module4_content import get_module4_lessons
+    from module5_content import get_module5_lessons
+except ImportError as e:
+    print(f"Warning: Could not import content modules: {e}")
 
 
 class Command(BaseCommand):
@@ -320,7 +334,7 @@ def product_list(request):
             slug="django-rest-framework",
             description="Build REST APIs in Django, comparing with ASP.NET Web API",
             order=2,
-            estimated_minutes=60,
+            estimated_minutes=35,
             dotnet_comparison="""
             - DRF ViewSets = Web API Controllers
             - Serializers = DTOs + Model Validation
@@ -505,7 +519,7 @@ public class ProductController : ControllerBase
             slug="llm-proxy",
             description="Implement a production-ready OpenAI proxy with rate limiting, logging, and business rules",
             order=4,
-            estimated_minutes=90,
+            estimated_minutes=40,
             dotnet_comparison="""
             - Django Middleware = ASP.NET Middleware
             - Django REST Framework Throttling = ASP.NET Rate Limiting
@@ -520,7 +534,7 @@ public class ProductController : ControllerBase
             slug="docker-deployment",
             description="Containerize Django apps and deploy to AWS EKS",
             order=5,
-            estimated_minutes=60,
+            estimated_minutes=35,
             dotnet_comparison="""
             - Gunicorn = Kestrel
             - requirements.txt = .csproj
@@ -529,5 +543,122 @@ public class ProductController : ControllerBase
             """
         )
         
+        # Add remaining lessons for Module 1
+        self.add_module1_lessons(module1)
+        
+        # Add remaining lessons for Module 2
+        self.add_module2_lessons(module2)
+        
+        # Add lessons for Module 3
+        self.add_module3_lessons(module3)
+        
+        # Add lessons for Module 4
+        self.add_module4_lessons(module4)
+        
+        # Add lessons for Module 5
+        self.add_module5_lessons(module5)
+        
         self.stdout.write(self.style.SUCCESS('Successfully populated tutorial content!'))
+    
+    def add_module1_lessons(self, module):
+        """Add additional lessons for Module 1: Django Fundamentals"""
+        try:
+            lessons = get_module1_lessons()
+            exercises = get_module1_exercises()
+            
+            for lesson_data in lessons:
+                # Find matching exercise
+                exercise = next((ex for ex in exercises if ex['lesson_slug'] == lesson_data['slug']), None)
+                
+                Lesson.objects.create(
+                    module=module,
+                    title=lesson_data['title'],
+                    slug=lesson_data['slug'],
+                    order=lesson_data['order'],
+                    content=lesson_data['content'],
+                    has_exercise=bool(exercise),
+                    exercise_starter_code=exercise['starter_code'] if exercise else '',
+                    exercise_solution=exercise['solution'] if exercise else '',
+                    exercise_tests=json.dumps(exercise['tests']) if exercise else ''
+                )
+        except Exception as e:
+            print(f"Could not add Module 1 lessons: {e}")
+    
+    def add_module2_lessons(self, module):
+        """Add lessons for Module 2: Django REST Framework"""
+        try:
+            lessons = get_module2_lessons()
+            exercises = get_module2_exercises()
+            
+            for i, lesson_data in enumerate(lessons[1:], 2):  # Skip first lesson (already exists)
+                # Find matching exercise
+                exercise = next((ex for ex in exercises if ex['lesson_slug'] == lesson_data['slug']), None)
+                
+                lesson = Lesson.objects.create(
+                    module=module,
+                    title=lesson_data['title'],
+                    slug=lesson_data['slug'],
+                    order=lesson_data['order'],
+                    content=lesson_data['content'],
+                    has_exercise=bool(exercise),
+                    exercise_starter_code=exercise['starter_code'] if exercise else '',
+                    exercise_solution=exercise['solution'] if exercise else '',
+                    exercise_tests=json.dumps(exercise['tests']) if exercise else ''
+                )
+        except Exception as e:
+            print(f"Could not add Module 2 lessons: {e}")
+    
+    def add_module3_lessons(self, module):
+        """Add lessons for Module 3: Async Django"""
+        try:
+            lessons = get_module3_lessons()
+            exercises = get_module3_exercises()
+            
+            for lesson_data in lessons:
+                # Find matching exercise
+                exercise = next((ex for ex in exercises if ex['lesson_slug'] == lesson_data['slug']), None)
+                
+                Lesson.objects.create(
+                    module=module,
+                    title=lesson_data['title'],
+                    slug=lesson_data['slug'],
+                    order=lesson_data['order'],
+                    content=lesson_data['content'],
+                    has_exercise=bool(exercise),
+                    exercise_starter_code=exercise['starter_code'] if exercise else '',
+                    exercise_solution=exercise['solution'] if exercise else '',
+                    exercise_tests=json.dumps(exercise['tests']) if exercise else ''
+                )
+        except Exception as e:
+            print(f"Could not add Module 3 lessons: {e}")
+    
+    def add_module4_lessons(self, module):
+        """Add lessons for Module 4: LLM Proxy"""
+        try:
+            lessons = get_module4_lessons()
+            for lesson_data in lessons:
+                Lesson.objects.create(
+                    module=module,
+                    title=lesson_data['title'],
+                    slug=lesson_data['slug'],
+                    order=lesson_data['order'],
+                    content=lesson_data['content']
+                )
+        except Exception as e:
+            print(f"Could not add Module 4 lessons: {e}")
+    
+    def add_module5_lessons(self, module):
+        """Add lessons for Module 5: Docker & Deployment"""
+        try:
+            lessons = get_module5_lessons()
+            for lesson_data in lessons:
+                Lesson.objects.create(
+                    module=module,
+                    title=lesson_data['title'],
+                    slug=lesson_data['slug'],
+                    order=lesson_data['order'],
+                    content=lesson_data['content']
+                )
+        except Exception as e:
+            print(f"Could not add Module 5 lessons: {e}")
         self.stdout.write(f'Created {Module.objects.count()} modules and {Lesson.objects.count()} lessons')
