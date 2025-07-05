@@ -23,6 +23,9 @@ cd lurn_django
 # Start with Docker Compose
 docker-compose up
 
+# Populate tutorial content (in another terminal)
+docker-compose exec web python manage.py populate_tutorial
+
 # Visit http://localhost:8000
 # Login with: admin / admin123
 ```
@@ -149,108 +152,3 @@ Feel free to add more modules, improve exercises, or enhance the UI!
 ## License
 
 MIT License
-
-## Overview
-This is an interactive, hands-on Django tutorial specifically designed for experienced .NET developers transitioning to Python and Django. The tutorial includes:
-
-- Multiple progressive lessons
-- Interactive coding exercises
-- Progress tracking (localStorage)
-- Real-world examples focused on LLM proxy services
-- Docker integration examples
-- AWS deployment patterns
-
-## Quick Start
-
-1. **Activate virtual environment:**
-   ```bash
-   source venv/bin/activate  # On macOS/Linux
-   # or
-   venv\Scripts\activate  # On Windows
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Run migrations:**
-   ```bash
-   python manage.py migrate
-   ```
-
-4. **Start the development server:**
-   ```bash
-   python manage.py runserver
-   ```
-
-5. **Access the tutorial:**
-   Open http://localhost:8000 in your browser
-
-## Tutorial Structure
-
-### Module 1: Django Fundamentals for .NET Developers
-- Django vs ASP.NET Core concepts
-- Project structure comparison
-- MVT vs MVC pattern
-- URL routing (urls.py vs Controllers)
-- Models and migrations (vs Entity Framework)
-
-### Module 2: Django REST Framework
-- Building REST APIs (vs Web API)
-- Serializers (vs DTOs)
-- ViewSets and APIViews
-- Authentication & permissions
-- Middleware comparison
-
-### Module 3: Async Django & Background Tasks
-- Async views (vs async/await in C#)
-- Celery for background tasks (vs BackgroundService)
-- Redis integration
-- Event-driven patterns
-
-### Module 4: LLM Proxy Implementation
-- Building an OpenAI proxy service
-- Request/response transformation
-- Rate limiting and quotas
-- Logging and monitoring
-- Business rule injection
-
-### Module 5: Docker & Deployment
-- Dockerfile best practices
-- docker-compose for local development
-- Environment configuration
-- AWS EKS deployment patterns
-- Health checks and monitoring
-
-## Key Differences from .NET
-
-| .NET Concept | Django Equivalent |
-|--------------|-------------------|
-| Controllers | Views/ViewSets |
-| Razor Views | Templates |
-| Entity Framework | Django ORM |
-| Startup.cs | settings.py |
-| appsettings.json | .env files |
-| IIS/Kestrel | Gunicorn/uWSGI |
-| NuGet | pip/PyPI |
-| .csproj | requirements.txt |
-
-## Docker Support
-
-Build and run with Docker:
-```bash
-docker build -t django-tutorial .
-docker run -p 8000:8000 django-tutorial
-```
-
-Or use docker-compose:
-```bash
-docker-compose up
-```
-
-## Progress Tracking
-Your progress is automatically saved in your browser's localStorage. You can:
-- Resume where you left off
-- Reset progress from the settings page
-- Export/import progress data
