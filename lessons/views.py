@@ -38,31 +38,34 @@ class LessonViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = LessonSerializer
     permission_classes = [AllowAny]
     
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def complete(self, request, pk=None):
         """Mark a lesson as complete"""
         lesson = self.get_object()
-        progress, created = UserProgress.objects.get_or_create(
-            user=request.user,
-            lesson=lesson
-        )
-        progress.mark_complete()
+        if request.user.is_authenticated:
+            progress, created = UserProgress.objects.get_or_create(
+                user=request.user,
+                lesson=lesson
+            )
+            progress.mark_complete()
         return Response({'status': 'completed'})
     
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def track_time(self, request, pk=None):
         """Track time spent on a lesson"""
         lesson = self.get_object()
         time_spent = request.data.get('time_spent_seconds', 0)
         
-        progress, created = UserProgress.objects.get_or_create(
-            user=request.user,
-            lesson=lesson
-        )
-        progress.time_spent_seconds += time_spent
-        progress.save()
-        
-        return Response({'total_time': progress.time_spent_seconds})
+        if request.user.is_authenticated:
+            progress, created = UserProgress.objects.get_or_create(
+                user=request.user,
+                lesson=lesson
+            )
+            progress.time_spent_seconds += time_spent
+            progress.save()
+            return Response({'total_time': progress.time_spent_seconds})
+        else:
+            return Response({'total_time': time_spent})
 
 
 class UserProgressViewSet(viewsets.ModelViewSet):
@@ -209,26 +212,32 @@ def run_exercise_tests(code, tests_json):
 @api_view(['POST'])
 def submit_quiz(request):
     """Submit quiz answer"""
-    if not request.user.is_authenticated:
-        return Response(
-            {'error': 'Authentication required'},
-            status=status.HTTP_401_UNAUTHORIZED
+    quiz_id = request.data.get('quiz')
+    selected_answer = request.data.get('selected_answer')
+    
+    try:
+        quiz = Quiz.objects.get(id=quiz_id)
+    except Quiz.DoesNotExist:
+        return Response({'error': 'Quiz not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    is_correct = selected_answer == quiz.correct_answer
+    
+    # Save attempt if user is authenticated
+    if request.user.is_authenticated:
+        UserQuizAttempt.objects.create(
+            user=request.user,
+            quiz=quiz,
+            selected_answer=selected_answer,
+            is_correct=is_correct
         )
     
-    serializer = QuizAttemptSerializer(data=request.data, context={'request': request})
-    if serializer.is_valid():
-        attempt = serializer.save()
-        quiz = attempt.quiz
-        
-        response_data = {
-            'is_correct': attempt.is_correct,
-            'correct_answer': quiz.correct_answer,
-            'explanation': quiz.explanation
-        }
-        
-        return Response(response_data)
+    response_data = {
+        'is_correct': is_correct,
+        'correct_answer': quiz.correct_answer,
+        'explanation': quiz.explanation
+    }
     
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    return Response(response_data)
 
 
 @api_view(['GET'])

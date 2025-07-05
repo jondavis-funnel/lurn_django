@@ -104,7 +104,7 @@ class TutorialApp {
             
             return `
                 <div class="col-md-6">
-                    <div class="card h-100 module-card" onclick="app.showModuleOverview(app.modules.find(m => m.id === ${module.id}))">
+                    <div class="card h-100 module-card" onclick="window.tutorialApp.showModuleOverview(${module.id})">
                         <div class="card-body">
                             <h5 class="card-title">${module.title}</h5>
                             <p class="card-text">${module.description}</p>
@@ -119,7 +119,7 @@ class TutorialApp {
                                 </div>
                             </div>
                             <button class="btn btn-sm btn-outline-primary" 
-                                    onclick="event.stopPropagation(); app.showModuleOverview(app.modules.find(m => m.id === ${module.id}))">
+                                    onclick="event.stopPropagation(); window.tutorialApp.showModuleOverview(${module.id})">
                                 View Module
                             </button>
                         </div>
@@ -167,6 +167,9 @@ class TutorialApp {
         document.getElementById('settings-panel').style.display = 'none';
         document.getElementById('lesson-content').style.display = 'block';
         
+        // Scroll to top of lesson content
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
         // Update breadcrumb
         document.getElementById('module-breadcrumb').textContent = module.title;
         document.getElementById('module-breadcrumb').style.cursor = 'pointer';
@@ -205,7 +208,8 @@ class TutorialApp {
             document.getElementById('quiz-section').style.display = 'none';
         }
         
-        // Update navigation buttons
+        // Show and update navigation buttons
+        document.getElementById('lesson-navigation').style.display = 'block';
         this.updateNavigationButtons();
         
         // Update active lesson in sidebar
@@ -233,7 +237,7 @@ class TutorialApp {
                 <p>${quiz.question}</p>
                 <div class="quiz-options" data-quiz-id="${quiz.id}">
                     ${quiz.options.map((option, i) => `
-                        <div class="quiz-option" data-answer="${i}">
+                        <div class="quiz-option" data-quiz="${quiz.id}" data-answer="${i}">
                             ${option}
                         </div>
                     `).join('')}
@@ -245,22 +249,33 @@ class TutorialApp {
         
         // Add click handlers
         document.querySelectorAll('.quiz-option').forEach(el => {
-            el.onclick = (e) => this.selectQuizAnswer(e);
+            el.onclick = (e) => {
+                const quizId = parseInt(el.dataset.quiz);
+                const answer = parseInt(el.dataset.answer);
+                if (quizId && answer !== undefined) {
+                    this.selectQuizAnswer(quizId, answer);
+                } else {
+                    console.error('Missing quiz data attributes:', el.dataset);
+                }
+            };
         });
     }
     
-    async selectQuizAnswer(event) {
-        const option = event.target;
-        const quizId = option.parentElement.dataset.quizId;
-        const answer = parseInt(option.dataset.answer);
+    async selectQuizAnswer(quizId, answer) {
+        const option = document.querySelector(`[data-quiz="${quizId}"][data-answer="${answer}"]`);
         
-        // Visual feedback
+        if (!option) {
+            console.error('Quiz option not found');
+            return;
+        }
+        
+        // Clear previous selections
         option.parentElement.querySelectorAll('.quiz-option').forEach(el => {
-            el.classList.remove('selected');
+            el.classList.remove('selected', 'correct', 'incorrect');
         });
         option.classList.add('selected');
         
-        // Submit answer
+        // Submit answer to server
         try {
             const response = await fetch('/api/submit-quiz/', {
                 method: 'POST',
@@ -275,17 +290,27 @@ class TutorialApp {
             });
             
             const result = await response.json();
+            const resultEl = document.getElementById(`quiz-result-${quizId}`);
             
             // Show result
-            const resultEl = document.getElementById(`quiz-result-${quizId}`);
             if (result.is_correct) {
                 option.classList.add('correct');
+                option.classList.add('selected'); // Keep selected state
                 resultEl.innerHTML = `<div class="alert alert-success">Correct! ${result.explanation}</div>`;
             } else {
                 option.classList.add('incorrect');
-                option.parentElement.children[result.correct_answer].classList.add('correct');
+                option.classList.add('selected'); // Keep selected state
+                const correctOption = option.parentElement.children[result.correct_answer];
+                if (correctOption) {
+                    correctOption.classList.add('correct');
+                }
                 resultEl.innerHTML = `<div class="alert alert-danger">Incorrect. ${result.explanation}</div>`;
             }
+            
+            // Store result locally for progress tracking
+            const quizResults = JSON.parse(localStorage.getItem('quizResults') || '{}');
+            quizResults[quizId] = { selected_answer: answer, is_correct: result.is_correct };
+            localStorage.setItem('quizResults', JSON.stringify(quizResults));
             
             // Disable further selection
             option.parentElement.querySelectorAll('.quiz-option').forEach(el => {
@@ -338,8 +363,33 @@ class TutorialApp {
     }
     
     showSolution() {
+        console.log('showSolution called');
+        console.log('Current lesson:', this.currentLesson);
+        
+        if (!this.currentLesson) {
+            console.error('No current lesson available');
+            return;
+        }
+        
         if (this.currentLesson.exercise_solution) {
-            document.getElementById('exercise-code').value = this.currentLesson.exercise_solution;
+            console.log('Setting solution:', this.currentLesson.exercise_solution);
+            const codeTextarea = document.getElementById('exercise-code');
+            if (codeTextarea) {
+                codeTextarea.value = this.currentLesson.exercise_solution;
+                // Show a confirmation message
+                const resultsEl = document.getElementById('test-results');
+                if (resultsEl) {
+                    resultsEl.innerHTML = '<div class="alert alert-info"><i class="fas fa-lightbulb"></i> Solution loaded! You can now see the complete implementation.</div>';
+                }
+            } else {
+                console.error('Exercise code textarea not found');
+            }
+        } else {
+            console.log('No exercise solution available for this lesson');
+            const resultsEl = document.getElementById('test-results');
+            if (resultsEl) {
+                resultsEl.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> No solution available for this exercise.</div>';
+            }
         }
     }
     
@@ -360,7 +410,23 @@ class TutorialApp {
         this.stopTimeTracking();
     }
     
-    showModuleOverview(module) {
+    showModuleOverview(moduleOrId) {
+        // Handle both module objects and module IDs
+        let module;
+        if (typeof moduleOrId === 'number') {
+            module = this.modules?.find(m => m.id === moduleOrId);
+            if (!module) {
+                console.error('Module not found:', moduleOrId);
+                return;
+            }
+        } else {
+            module = moduleOrId;
+        }
+        
+        if (!module) {
+            console.error('Invalid module provided');
+            return;
+        }
         // Hide all content sections
         document.getElementById('lesson-content').style.display = 'none';
         document.getElementById('progress-dashboard').style.display = 'none';
@@ -386,7 +452,7 @@ class TutorialApp {
                 <div class="list-group">
                     ${module.lessons.map((lesson, index) => `
                         <a href="#" class="list-group-item list-group-item-action" 
-                           onclick="app.loadLesson(app.modules.find(m => m.id === ${module.id}), app.modules.find(m => m.id === ${module.id}).lessons[${index}]); return false;">
+                           onclick="window.tutorialApp.loadLessonById(${lesson.id}); return false;">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h5 class="mb-1">${index + 1}. ${lesson.title}</h5>
@@ -398,8 +464,18 @@ class TutorialApp {
                     `).join('')}
                 </div>
                 <div class="mt-4">
-                    <button class="btn btn-primary" onclick="app.loadLesson(app.modules.find(m => m.id === ${module.id}), app.modules.find(m => m.id === ${module.id}).lessons[0]); return false;">
-                        Start Module
+                    <button class="btn btn-primary" onclick="window.tutorialApp.startModule(${module.id}); return false;">
+                        <i class="fas fa-play"></i> Start Module
+                    </button>
+                </div>
+                
+                <!-- Module Navigation -->
+                <div class="module-navigation mt-4 d-flex justify-content-between">
+                    <button class="btn btn-outline-secondary" onclick="window.tutorialApp.showHome(); return false;">
+                        <i class="fas fa-arrow-left"></i> Back to Home
+                    </button>
+                    <button class="btn btn-primary" onclick="window.tutorialApp.startModule(${module.id}); return false;">
+                        Start First Lesson <i class="fas fa-arrow-right"></i>
                     </button>
                 </div>
             </div>
@@ -414,11 +490,14 @@ class TutorialApp {
         document.getElementById('lesson-breadcrumb').textContent = 'Overview';
         document.getElementById('lesson-title').textContent = 'Module Overview';
         
-        // Hide elements not needed for overview
-        document.getElementById('code-comparison').style.display = 'none';
-        document.getElementById('exercise-section').style.display = 'none';
-        document.getElementById('quiz-section').style.display = 'none';
-        document.getElementById('lesson-navigation').style.display = 'none';
+        // Hide elements not needed for overview (safely)
+        const elementsToHide = ['code-comparison', 'exercise-section', 'quiz-section', 'lesson-navigation'];
+        elementsToHide.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.style.display = 'none';
+            }
+        });
         
         // Clear current lesson but keep module
         this.currentModule = module;
@@ -509,7 +588,45 @@ class TutorialApp {
         }
     }
     
+    startModule(moduleId) {
+        const module = this.modules?.find(m => m.id === moduleId);
+        if (module && module.lessons && module.lessons.length > 0) {
+            this.loadLesson(module, module.lessons[0]);
+        } else {
+            console.error('Module or lessons not found:', moduleId);
+        }
+    }
+    
+    loadLessonById(lessonId) {
+        // Find the lesson and its module
+        let targetModule = null;
+        let targetLesson = null;
+        
+        for (const module of this.modules || []) {
+            const lesson = module.lessons?.find(l => l.id === lessonId);
+            if (lesson) {
+                targetModule = module;
+                targetLesson = lesson;
+                break;
+            }
+        }
+        
+        if (targetModule && targetLesson) {
+            this.loadLesson(targetModule, targetLesson);
+        } else {
+            console.error('Lesson not found:', lessonId);
+        }
+    }
+    
     navigateLesson(direction) {
+        // If we're on module overview, start with first lesson
+        if (!this.currentLesson) {
+            if (this.currentModule && this.currentModule.lessons.length > 0) {
+                this.loadLesson(this.currentModule, this.currentModule.lessons[0]);
+            }
+            return;
+        }
+        
         const currentModuleIndex = this.modules.findIndex(m => m.id === this.currentModule.id);
         const currentLessonIndex = this.currentModule.lessons.findIndex(l => l.id === this.currentLesson.id);
         
@@ -570,9 +687,9 @@ class TutorialApp {
             (this.progress[this.currentLesson.id].time_spent_seconds || 0) + seconds;
         this.saveProgress();
         
-        // Save to server if authenticated
+        // Try to save to server (gracefully handle auth errors)
         try {
-            await fetch(`/api/lessons/${this.currentLesson.id}/track_time/`, {
+            const response = await fetch(`/api/lessons/${this.currentLesson.id}/track_time/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -582,8 +699,12 @@ class TutorialApp {
                     time_spent_seconds: seconds
                 })
             });
+            
+            if (!response.ok && response.status === 403) {
+                console.log('Time tracking requires authentication, using local storage only');
+            }
         } catch (error) {
-            console.error('Error saving time:', error);
+            console.log('Server time tracking failed, using local storage only:', error.message);
         }
     }
     
@@ -686,6 +807,29 @@ class TutorialApp {
         document.getElementById('lesson-content').style.display = 'none';
         document.getElementById('progress-dashboard').style.display = 'none';
         document.getElementById('settings-panel').style.display = 'block';
+        
+        // Update browser history
+        history.pushState({page: 'settings'}, 'Settings', '#settings');
+    }
+    
+    showHome() {
+        document.getElementById('welcome-screen').style.display = 'block';
+        document.getElementById('lesson-content').style.display = 'none';
+        document.getElementById('progress-dashboard').style.display = 'none';
+        document.getElementById('settings-panel').style.display = 'none';
+        document.getElementById('lesson-navigation').style.display = 'none';
+        
+        // Update browser history
+        history.pushState({page: 'home'}, 'Django for .NET Developers', '#home');
+        
+        // Reset current lesson and module
+        this.currentLesson = null;
+        this.currentModule = null;
+        
+        // Reset breadcrumb to home state
+        document.getElementById('module-breadcrumb').textContent = '';
+        document.getElementById('lesson-breadcrumb').textContent = '';
+        document.getElementById('module-breadcrumb').style.cursor = 'default';
     }
     
     async exportProgress() {
@@ -870,11 +1014,34 @@ class TutorialApp {
             this.showSettings();
         };
         
+        // Settings back button
+        document.getElementById('settings-back-btn').onclick = (e) => {
+            e.preventDefault();
+            this.showHome();
+        };
+        
         document.getElementById('export-progress').onclick = () => this.exportProgress();
         document.getElementById('import-progress').onclick = () => this.importProgress();
         document.getElementById('reset-progress').onclick = () => this.resetProgress();
         document.getElementById('import-file').onchange = (e) => this.handleImportFile(e);
         document.getElementById('dark-mode').onchange = () => this.toggleDarkMode();
+        
+        // Handle browser back/forward navigation
+        window.addEventListener('popstate', (event) => {
+            if (event.state) {
+                switch (event.state.page) {
+                    case 'settings':
+                        this.showSettings();
+                        break;
+                    case 'home':
+                    default:
+                        this.showHome();
+                        break;
+                }
+            } else {
+                this.showHome();
+            }
+        });
         
         // Handle page unload
         window.addEventListener('beforeunload', () => {
