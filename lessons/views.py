@@ -30,6 +30,12 @@ class ModuleViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ModuleSerializer
     permission_classes = [AllowAny]
     lookup_field = 'slug'
+    
+    def get_serializer_context(self):
+        """Pass request context to the serializer"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
 
 
 class LessonViewSet(viewsets.ReadOnlyModelViewSet):
@@ -37,6 +43,12 @@ class LessonViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Lesson.objects.all()
     serializer_class = LessonSerializer
     permission_classes = [AllowAny]
+    
+    def get_serializer_context(self):
+        """Pass request context to the serializer"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
     
     @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def complete(self, request, pk=None):

@@ -35,7 +35,7 @@ class LessonSerializer(serializers.ModelSerializer):
         
     def get_is_completed(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
+        if request and request.user and request.user.is_authenticated:
             return UserProgress.objects.filter(
                 user=request.user,
                 lesson=obj,
@@ -45,7 +45,7 @@ class LessonSerializer(serializers.ModelSerializer):
     
     def get_progress(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
+        if request and request.user and request.user.is_authenticated:
             progress = UserProgress.objects.filter(
                 user=request.user,
                 lesson=obj
@@ -80,7 +80,7 @@ class ModuleSerializer(serializers.ModelSerializer):
     
     def get_completed_lessons(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
+        if request and request.user and request.user.is_authenticated:
             return UserProgress.objects.filter(
                 user=request.user,
                 lesson__module=obj,

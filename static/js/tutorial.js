@@ -943,8 +943,22 @@ class TutorialApp {
         let completedLessons = 0;
         
         this.modules.forEach(module => {
-            totalLessons += module.total_lessons;
-            completedLessons += module.completed_lessons;
+            // Use server-side data if available, otherwise calculate from local progress
+            if (module.total_lessons !== undefined && module.completed_lessons !== undefined) {
+                totalLessons += module.total_lessons;
+                completedLessons += module.completed_lessons;
+            } else {
+                // Fallback to local calculation
+                totalLessons += module.lessons ? module.lessons.length : 0;
+                if (module.lessons) {
+                    module.lessons.forEach(lesson => {
+                        const progress = this.progress[lesson.id];
+                        if (progress && progress.completed) {
+                            completedLessons++;
+                        }
+                    });
+                }
+            }
         });
         
         const percentage = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
@@ -952,7 +966,19 @@ class TutorialApp {
     }
     
     isLessonCompleted(lessonId) {
-        return this.progress[lessonId]?.completed || false;
+        // Check local progress first
+        const localProgress = this.progress[lessonId]?.completed;
+        if (localProgress) return true;
+        
+        // Check server-side progress from lesson data
+        for (const module of this.modules) {
+            const lesson = module.lessons?.find(l => l.id === lessonId);
+            if (lesson && lesson.is_completed) {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
     formatTime(seconds) {
