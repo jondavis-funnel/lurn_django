@@ -34,7 +34,7 @@ docker-compose exec web python manage.py populate_tutorial
 
 ```bash
 # Create virtual environment
-python3 -m venv venv
+python3 -m venv .venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
