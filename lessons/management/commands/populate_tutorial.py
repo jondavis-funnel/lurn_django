@@ -24,29 +24,32 @@ class Command(BaseCommand):
         self.stdout.write('Populating tutorial content...')
         
         # Module 1: Django Fundamentals for .NET Developers
-        module1 = Module.objects.create(
+        module1, _ = Module.objects.get_or_create(
             title="Django Fundamentals for .NET Developers",
             slug="django-fundamentals",
-            description="Learn Django basics with direct comparisons to ASP.NET concepts you already know",
-            order=1,
-            estimated_minutes=45,
-            dotnet_comparison="""
-            - Django Project = ASP.NET Solution
-            - Django App = ASP.NET Project/Assembly
-            - urls.py = RouteConfig/Controllers
-            - views.py = Controllers/Actions
-            - models.py = Entity Models
-            - settings.py = appsettings.json + Startup.cs
-            """
+            defaults={
+                'description': "Learn Django basics with direct comparisons to ASP.NET concepts you already know",
+                'order': 1,
+                'estimated_minutes': 45,
+                'dotnet_comparison': """
+                - Django Project = ASP.NET Solution
+                - Django App = ASP.NET Project/Assembly
+                - urls.py = RouteConfig/Controllers
+                - views.py = Controllers/Actions
+                - models.py = Entity Models
+                - settings.py = appsettings.json + Startup.cs
+                """
+            }
         )
         
         # Lesson 1.1: Project Structure
-        lesson1_1 = Lesson.objects.create(
+        lesson1_1, _ = Lesson.objects.get_or_create(
             module=module1,
-            title="Django Project Structure vs ASP.NET",
             slug="project-structure",
-            order=1,
-            content="""
+            defaults={
+                'title': "Django Project Structure vs ASP.NET",
+                'order': 1,
+                'content': """
 # Django Project Structure vs ASP.NET
 
 Welcome! Let's start by comparing Django's project structure with what you know from ASP.NET.
@@ -99,7 +102,7 @@ myproject/
 | DbContext | Models + Manager |
 | IIS/Kestrel | Gunicorn/uWSGI |
             """,
-            django_code="""# Django project structure example
+                'django_code': """# Django project structure example
 # settings.py
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -121,7 +124,7 @@ from django.http import JsonResponse
 def hello_world(request):
     return JsonResponse({'message': 'Hello from Django!'})
 """,
-            dotnet_code="""// ASP.NET Core structure example
+                'dotnet_code': """// ASP.NET Core structure example
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
@@ -140,16 +143,58 @@ public class HelloController : ControllerBase
         return Ok(new { message = "Hello from ASP.NET!" });
     }
 }
-"""
+""",
+                'has_exercise': True,
+                'exercise_starter_code': """# Create a Django view that returns a list of products
+# The view should:
+# 1. Get all products from the database
+# 2. Return them as JSON
+# 3. Include product name, price, and stock
+
+from django.http import JsonResponse
+from .models import Product
+
+def product_list(request):
+    # Your code here
+    pass
+""",
+                'exercise_solution': """from django.http import JsonResponse
+from .models import Product
+
+def product_list(request):
+    products = Product.objects.all()
+    product_data = []
+    
+    for product in products:
+        product_data.append({
+            'name': product.name,
+            'price': float(product.price),
+            'stock': product.stock
+        })
+    
+    return JsonResponse({
+        'products': product_data,
+        'count': len(product_data)
+    })
+""",
+                'exercise_tests': json.dumps([
+                    {
+                        "description": "Check if function returns JsonResponse",
+                        "code": "print(type(product_list(None)).__name__)",
+                        "expected": "JsonResponse"
+                    }
+                ])
+            }
         )
         
         # Lesson 1.2: MVT vs MVC
-        lesson1_2 = Lesson.objects.create(
+        lesson1_2, _ = Lesson.objects.get_or_create(
             module=module1,
-            title="MVT Pattern vs MVC",
             slug="mvt-vs-mvc",
-            order=2,
-            content="""
+            defaults={
+                'title': "MVT Pattern vs MVC",
+                'order': 2,
+                'content': """
 # Understanding Django's MVT vs ASP.NET's MVC
 
 Django uses MVT (Model-View-Template) instead of MVC, but they're very similar!
@@ -191,7 +236,7 @@ This naming difference often confuses .NET developers, but once you understand t
 
 Both examples show how to display a list of users - notice the similarities!
             """,
-            django_code="""# models.py
+                'django_code': """# models.py
 from django.db import models
 
 class User(models.Model):
@@ -226,7 +271,7 @@ urlpatterns = [
 </ul>
 {% endblock %}
 """,
-            dotnet_code="""// Models/User.cs
+                'dotnet_code': """// Models/User.cs
 public class User
 {
     public int Id { get; set; }
@@ -267,8 +312,8 @@ public class UserController : Controller
 }
 </ul>
 """,
-            has_exercise=True,
-            exercise_starter_code="""# Create a Django view that returns a list of products
+                'has_exercise': True,
+                'exercise_starter_code': """# Create a Django view that returns a list of products
 # The view should:
 # 1. Get all products from the database
 # 2. Return them as JSON
@@ -281,7 +326,7 @@ def product_list(request):
     # Your code here
     pass
 """,
-            exercise_solution="""from django.http import JsonResponse
+                'exercise_solution': """from django.http import JsonResponse
 from .models import Product
 
 def product_list(request):
@@ -300,13 +345,14 @@ def product_list(request):
         'count': len(product_data)
     })
 """,
-            exercise_tests=json.dumps([
-                {
-                    "description": "Check if function returns JsonResponse",
-                    "code": "print(type(product_list(None)).__name__)",
-                    "expected": "JsonResponse"
-                }
-            ])
+                'exercise_tests': json.dumps([
+                    {
+                        "description": "Check if function returns JsonResponse",
+                        "code": "print(type(product_list(None)).__name__)",
+                        "expected": "JsonResponse"
+                    }
+                ])
+            }
         )
         
         # Add a quiz to lesson 1.1
@@ -329,27 +375,30 @@ def product_list(request):
         )
         
         # Module 2: Django REST Framework
-        module2 = Module.objects.create(
+        module2, _ = Module.objects.get_or_create(
             title="Django REST Framework",
             slug="django-rest-framework",
-            description="Build REST APIs in Django, comparing with ASP.NET Web API",
-            order=2,
-            estimated_minutes=35,
-            dotnet_comparison="""
-            - DRF ViewSets = Web API Controllers
-            - Serializers = DTOs + Model Validation
-            - DRF Routers = Web API Routing
-            - Permissions = Authorization Policies
-            """
+            defaults={
+                'description': "Build REST APIs in Django, comparing with ASP.NET Web API",
+                'order': 2,
+                'estimated_minutes': 35,
+                'dotnet_comparison': """
+                - DRF ViewSets = Web API Controllers
+                - Serializers = DTOs + Model Validation
+                - DRF Routers = Web API Routing
+                - Permissions = Authorization Policies
+                """
+            }
         )
         
         # Lesson 2.1: Building REST APIs
-        lesson2_1 = Lesson.objects.create(
+        lesson2_1, _ = Lesson.objects.get_or_create(
             module=module2,
-            title="REST APIs: DRF vs Web API",
             slug="rest-apis",
-            order=1,
-            content="""
+            defaults={
+                'title': "REST APIs: DRF vs Web API",
+                'order': 1,
+                'content': """
 # Building REST APIs: Django REST Framework vs ASP.NET Web API
 
 Django REST Framework (DRF) is to Django what Web API is to ASP.NET Core - a powerful toolkit for building REST APIs.
@@ -382,7 +431,7 @@ Django REST Framework (DRF) is to Django what Web API is to ASP.NET Core - a pow
 
 Let's build a complete CRUD API for products to see the comparison.
             """,
-            django_code="""# serializers.py
+                'django_code': """# serializers.py
 from rest_framework import serializers
 from .models import Product
 
@@ -432,7 +481,7 @@ urlpatterns = [
 # DELETE /api/products/{id}/ - delete
 # GET /api/products/low_stock/ - custom action
 """,
-            dotnet_code="""// DTOs/ProductDto.cs
+                'dotnet_code': """// DTOs/ProductDto.cs
 public class ProductDto
 {
     public int Id { get; set; }
@@ -496,51 +545,58 @@ public class ProductController : ControllerBase
     }
 }
 """
+            }
         )
         
         # Module 3: Async Django & Background Tasks
-        module3 = Module.objects.create(
+        module3, _ = Module.objects.get_or_create(
             title="Async Django & Background Tasks",
             slug="async-background-tasks",
-            description="Learn async patterns and background task processing, comparing with .NET's async/await and BackgroundService",
-            order=3,
-            estimated_minutes=45,
-            dotnet_comparison="""
-            - Django async views = ASP.NET async actions
-            - Celery = BackgroundService + Queue
-            - Django Channels = SignalR
-            - asyncio = Task/async/await
-            """
+            defaults={
+                'description': "Learn async patterns and background task processing, comparing with .NET's async/await and BackgroundService",
+                'order': 3,
+                'estimated_minutes': 45,
+                'dotnet_comparison': """
+                - Django async views = ASP.NET async actions
+                - Celery = BackgroundService + Queue
+                - Django Channels = SignalR
+                - asyncio = Task/async/await
+                """
+            }
         )
         
         # Module 4: LLM Proxy Implementation
-        module4 = Module.objects.create(
+        module4, _ = Module.objects.get_or_create(
             title="Building an LLM Proxy Service",
             slug="llm-proxy",
-            description="Implement a production-ready OpenAI proxy with rate limiting, logging, and business rules",
-            order=4,
-            estimated_minutes=40,
-            dotnet_comparison="""
-            - Django Middleware = ASP.NET Middleware
-            - Django REST Framework Throttling = ASP.NET Rate Limiting
-            - Django Signals = .NET Events
-            - Celery Tasks = Hosted Services
-            """
+            defaults={
+                'description': "Implement a production-ready OpenAI proxy with rate limiting, logging, and business rules",
+                'order': 4,
+                'estimated_minutes': 40,
+                'dotnet_comparison': """
+                - Django Middleware = ASP.NET Middleware
+                - Django REST Framework Throttling = ASP.NET Rate Limiting
+                - Django Signals = .NET Events
+                - Celery Tasks = Hosted Services
+                """
+            }
         )
         
         # Module 5: Docker & AWS Deployment
-        module5 = Module.objects.create(
+        module5, _ = Module.objects.get_or_create(
             title="Docker & AWS EKS Deployment",
             slug="docker-deployment",
-            description="Containerize Django apps and deploy to AWS EKS",
-            order=5,
-            estimated_minutes=35,
-            dotnet_comparison="""
-            - Gunicorn = Kestrel
-            - requirements.txt = .csproj
-            - Django static files = wwwroot
-            - manage.py commands = dotnet CLI tools
-            """
+            defaults={
+                'description': "Containerize Django apps and deploy to AWS EKS",
+                'order': 5,
+                'estimated_minutes': 35,
+                'dotnet_comparison': """
+                - Gunicorn = Kestrel
+                - requirements.txt = .csproj
+                - Django static files = wwwroot
+                - manage.py commands = dotnet CLI tools
+                """
+            }
         )
         
         # Add remaining lessons for Module 1
